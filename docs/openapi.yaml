@@ -1,0 +1,158 @@
+openapi: 3.0.3
+
+info:
+  title: Notification Service API
+  version: "1.0.0"
+  description: Sends and tracks user notifications across EMAIL / SMS / PUSH channels.
+
+servers:
+  - url: http://localhost:3006
+    description: Local (direct)
+  - url: http://localhost:3000
+    description: Local (via API Gateway)
+
+tags:
+  - name: Health
+  - name: Notifications
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      responses:
+        "200": { description: Service is up }
+
+  /v1/notifications:
+    post:
+      tags: [Notifications]
+      summary: Send a notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationCreate" }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/NotificationEnvelope" } } }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: userId
+          schema: { type: string }
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [ORDER_PLACED, ORDER_CONFIRMED, ORDER_PICKED_UP, ORDER_DELIVERED, PAYMENT_SUCCESS, PAYMENT_FAILED]
+        - in: query
+          name: channel
+          schema: { type: string, enum: [EMAIL, SMS, PUSH] }
+      responses:
+        "200":
+          description: Paginated list
+          content: { application/json: { schema: { $ref: "#/components/schemas/NotificationList" } } }
+
+  /v1/notifications/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Notifications]
+      summary: Get notification by ID
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/NotificationEnvelope" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      responses:
+        "200": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+
+  schemas:
+    Notification:
+      type: object
+      properties:
+        _id: { type: string }
+        userId: { type: string }
+        type:
+          type: string
+          enum: [ORDER_PLACED, ORDER_CONFIRMED, ORDER_PICKED_UP, ORDER_DELIVERED, PAYMENT_SUCCESS, PAYMENT_FAILED]
+        channel: { type: string, enum: [EMAIL, SMS, PUSH] }
+        message: { type: string }
+        metadata: { type: object }
+        created_at: { type: string, format: date-time }
+
+    NotificationCreate:
+      type: object
+      required: [userId, type, channel, message]
+      properties:
+        userId: { type: string, example: "1" }
+        type:
+          type: string
+          enum: [ORDER_PLACED, ORDER_CONFIRMED, ORDER_PICKED_UP, ORDER_DELIVERED, PAYMENT_SUCCESS, PAYMENT_FAILED]
+        channel: { type: string, enum: [EMAIL, SMS, PUSH] }
+        message: { type: string, minLength: 1, maxLength: 500 }
+        metadata:
+          type: object
+          additionalProperties: true
+          example: { order_id: 1 }
+
+    NotificationEnvelope:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/Notification" }
+
+    NotificationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    Error:
+      type: object
+      required: [code, message, correlationId]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        correlationId: { type: string, format: uuid }
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
